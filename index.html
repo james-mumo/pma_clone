@@ -9,28 +9,47 @@
       tw.src = "https://cdn.tailwindcss.com";
       document.head.appendChild(tw);
     </script>
+    <style>
+      .no-data-message {
+        padding: 1rem;
+        background-color: #f3f4f6;
+        border-radius: 0.25rem;
+        text-align: center;
+        color: #6b7280;
+      }
+    </style>
   </head>
   <body class="bg-white text-gray-800 font-sans">
-    <h1 class="text-2xl font-bold p-6 text-blue-700 border-b h-[10vh]">
-      📊 Real-Time Database Admin Interface
+    <div class="flex">
+      <h1 class="text-2xl font-bold p-6 text-blue-700 border-b h-[10vh]">
+        📊 Real-Time Database Admin Interface
+      </h1>
       <span
         id="lastUpdated"
         class="text-sm font-normal text-gray-500 ml-2"
       ></span>
-    </h1>
+
+      <div class="flex-1"></div>
+      <div class="flex items-center">
+        <label class="mr-2 text-sm text-gray-600">Database:</label>
+        <select id="databaseSelector" class="border rounded px-3 py-1 text-sm">
+          <option value="">Loading databases...</option>
+        </select>
+      </div>
+    </div>
 
     <div class="flex min-h-[90vh]">
       <!-- Sidebar -->
       <div class="w-1/5 flex flex-col bg-gray-100 border-r p-4 h-[90vh]">
         <div class="flex">
           <h2 class="text-lg font-semibold mb-2 text-blue-600">Tables</h2>
-<button 
-  id="deleteAllTablesBtn"
-  class="bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-1 rounded mb-2 ml-2"
-  title="Delete all tables (DANGEROUS!)"
->
-  Delete All Tables
-</button>
+          <button
+            id="deleteAllTablesBtn"
+            class="bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-1 rounded mb-2 ml-2"
+            title="Delete all tables (DANGEROUS!)"
+          >
+            Delete All Tables
+          </button>
         </div>
         <ul id="sidebarTables" class="space-y-1 overflow-y-auto"></ul>
       </div>
@@ -65,7 +84,87 @@
     </div>
 
     <script>
-      let currentTable = localStorage.getItem('currentTable') || null;
+      // Modify your startup code to load databases first
+      document.addEventListener("DOMContentLoaded", function () {
+        loadDatabases().then(() => {
+          // Then load tables for the selected database
+          refreshTablesList();
+        });
+
+        // Rest of your initialization code...
+        startAutoRefresh();
+      });
+      // Add these variables at the top
+      let currentDatabase =
+        localStorage.getItem("currentDatabase") || "cohort_sync";
+      let allDatabases = [];
+
+      // Add this function to load databases
+      function loadDatabases() {
+        fetch("get_databases.php")
+          .then((res) => res.json())
+          .then((databases) => {
+            allDatabases = databases;
+            const selector = document.getElementById("databaseSelector");
+            selector.innerHTML = "";
+
+            databases.forEach((db) => {
+              const option = document.createElement("option");
+              option.value = db;
+              option.textContent = db;
+              if (db === currentDatabase) {
+                option.selected = true;
+              }
+              selector.appendChild(option);
+            });
+
+            // If no database was stored, use the first one
+            if (!currentDatabase && databases.length > 0) {
+              currentDatabase = databases[0];
+              selector.value = currentDatabase;
+            }
+          })
+          .catch((err) => {
+            console.error("Error loading databases:", err);
+            document.getElementById("databaseSelector").innerHTML =
+              '<option value="">Error loading databases</option>';
+          });
+      }
+
+      // Add this event listener
+      document
+        .getElementById("databaseSelector")
+        .addEventListener("change", function () {
+          currentDatabase = this.value;
+          localStorage.setItem("currentDatabase", currentDatabase);
+
+          // Reconnect to the selected database
+          reconnectDatabase(currentDatabase).then(() => {
+            // Refresh the interface
+            refreshTablesList();
+          });
+        });
+
+      // Add this function to reconnect to the selected database
+      function reconnectDatabase(dbName) {
+        return fetch("switch_database.php", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ database: dbName }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (!data.success) {
+              throw new Error(data.message || "Failed to switch database");
+            }
+          });
+      }
+    </script>
+
+    <script>
+      let currentTable = localStorage.getItem("currentTable") || null;
       let refreshInterval = null;
       const refreshRate = 500; // 0.5 seconds
 
@@ -105,22 +204,47 @@
 
       // Highlight active table in sidebar
       function highlightActiveTable() {
-        const tableItems = sidebar.querySelectorAll('li');
-        tableItems.forEach(item => {
+        const tableItems = sidebar.querySelectorAll("li");
+        tableItems.forEach((item) => {
           if (item.textContent === currentTable) {
-            item.classList.add('bg-blue-200', 'text-blue-800');
-            item.classList.remove('text-gray-700', 'hover:bg-blue-100');
+            item.classList.add("bg-blue-200", "text-blue-800");
+            item.classList.remove("text-gray-700", "hover:bg-blue-100");
           } else {
-            item.classList.remove('bg-blue-200', 'text-blue-800');
-            item.classList.add('text-gray-700', 'hover:bg-blue-100');
+            item.classList.remove("bg-blue-200", "text-blue-800");
+            item.classList.add("text-gray-700", "hover:bg-blue-100");
           }
         });
       }
 
       // Load tables list
       fetch("tables.php")
-        .then((res) => res.json())
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error("Network response was not ok");
+          }
+          return res.json();
+        })
+
+        // .then((res) => res.json())
+
         .then((tables) => {
+          const sidebar = document.getElementById("sidebarTables");
+          sidebar.innerHTML = "";
+
+          if (tables.error) {
+            sidebar.innerHTML = `<li class="text-red-500">${tables.error}</li>`;
+            document.getElementById("tableContainer").innerHTML =
+              "Error loading tables";
+            return;
+          }
+
+          if (!tables.length) {
+            sidebar.innerHTML =
+              '<li class="text-gray-500">No tables found</li>';
+            document.getElementById("tableContainer").innerHTML =
+              "No tables in database";
+            return;
+          }
           tables.forEach((table, index) => {
             const li = document.createElement("li");
             li.textContent = table;
@@ -128,18 +252,18 @@
               "cursor-pointer hover:text-blue-600 text-gray-700 px-2 py-1 rounded hover:bg-blue-100";
             li.onclick = () => {
               currentTable = table;
-              localStorage.setItem('currentTable', table);
+              localStorage.setItem("currentTable", table);
               loadTableData(table);
               highlightActiveTable();
             };
             sidebar.appendChild(li);
 
             // If no table is selected or the stored table doesn't exist, select first table
-            if ((!currentTable || !tables.includes(currentTable))) {
+            if (!currentTable || !tables.includes(currentTable)) {
               currentTable = tables[0];
-              localStorage.setItem('currentTable', currentTable);
+              localStorage.setItem("currentTable", currentTable);
             }
-            
+
             // Load the current table (either from localStorage or first table)
             if (table === currentTable) {
               loadTableData(currentTable);
@@ -150,14 +274,24 @@
 
       function loadTableData(table) {
         fetch(`data.php?table=${encodeURIComponent(table)}`)
-          .then((res) => res.json())
-          .then((rows) => {
+          .then((res) => {
+            if (!res.ok) {
+              throw new Error("Network response was not ok");
+            }
+            return res.json();
+          })
+          .then((data) => {
             updateTimestamp();
             tableTitle.textContent = `Showing Data for: ${table}`;
             const container = document.getElementById("tableContainer");
             container.innerHTML = "";
 
-            if (!rows.length) {
+            if (data.error) {
+              container.textContent = data.error;
+              return;
+            }
+
+            if (!data.length) {
               container.textContent = "No data in this table.";
               return;
             }
@@ -302,81 +436,97 @@
       // Start auto-refresh on page load
       startAutoRefresh();
     </script>
-    
-<script>
-  // Add this event listener with your other event listeners
-  document.getElementById('deleteAllTablesBtn').addEventListener('click', function() {
-    if (confirm('⚠️ DANGER! This will delete ALL tables and their data. Are you REALLY sure?')) {
-      if (confirm('❗❗ This action cannot be undone. ALL DATA WILL BE LOST. Confirm deletion?')) {
-        deleteAllTables();
-      }
-    }
-  });
 
-  // Add this function to delete all tables
-  async function deleteAllTables() {
-    try {
-      const container = document.getElementById("tableContainer");
-      container.innerHTML = "<div class='p-4 bg-yellow-100'>Deleting all tables... Please wait.</div>";
-      
-      const response = await fetch("delete_all_tables.php", {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ confirm: true })
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        container.innerHTML = `
+    <script>
+      // Add this event listener with your other event listeners
+      document
+        .getElementById("deleteAllTablesBtn")
+        .addEventListener("click", function () {
+          if (
+            confirm(
+              "⚠️ DANGER! This will delete ALL tables and their data. Are you REALLY sure?"
+            )
+          ) {
+            if (
+              confirm(
+                "❗❗ This action cannot be undone. ALL DATA WILL BE LOST. Confirm deletion?"
+              )
+            ) {
+              deleteAllTables();
+            }
+          }
+        });
+
+      // Add this function to delete all tables
+      async function deleteAllTables() {
+        try {
+          const container = document.getElementById("tableContainer");
+          container.innerHTML =
+            "<div class='p-4 bg-yellow-100'>Deleting all tables... Please wait.</div>";
+
+          const response = await fetch("delete_all_tables.php", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ confirm: true }),
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            container.innerHTML = `
           <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4">
             <p class="font-bold">Success</p>
             <p>All tables have been deleted.</p>
-            <p class="text-sm mt-2">${result.message || ''}</p>
+            <p class="text-sm mt-2">${result.message || ""}</p>
           </div>
         `;
-        // Refresh the tables list
-        refreshTablesList();
-      } else {
-        showError(result.message || "Failed to delete tables", result);
-      }
-    } catch (err) {
-      showError("Error deleting tables: " + (err.message || "Unknown error"));
-    }
-  }
-
-  // Add this function to refresh the tables list
-  function refreshTablesList() {
-    const sidebar = document.getElementById("sidebarTables");
-    sidebar.innerHTML = '';
-    currentTable = null;
-    localStorage.removeItem('currentTable');
-    
-    fetch("tables.php")
-      .then((res) => res.json())
-      .then((tables) => {
-        if (tables.length === 0) {
-          sidebar.innerHTML = '<li class="text-gray-500">No tables found</li>';
-          document.getElementById("tableContainer").innerHTML = "No tables in database";
-        } else {
-          tables.forEach((table) => {
-            const li = document.createElement("li");
-            li.textContent = table;
-            li.className = "cursor-pointer hover:text-blue-600 text-gray-700 px-2 py-1 rounded hover:bg-blue-100";
-            li.onclick = () => {
-              allTablesMode = false;
-              currentTable = table;
-              localStorage.setItem('currentTable', table);
-              loadTableData(table);
-              highlightActiveTable();
-            };
-            sidebar.appendChild(li);
-          });
+            // Refresh the tables list
+            refreshTablesList();
+          } else {
+            showError(result.message || "Failed to delete tables", result);
+          }
+        } catch (err) {
+          showError(
+            "Error deleting tables: " + (err.message || "Unknown error")
+          );
         }
-      });
-  }
-</script>
+      }
+
+      // Add this function to refresh the tables list
+      function refreshTablesList() {
+        const sidebar = document.getElementById("sidebarTables");
+        sidebar.innerHTML = "";
+        currentTable = null;
+        localStorage.removeItem("currentTable");
+
+        fetch("tables.php")
+          .then((res) => res.json())
+          .then((tables) => {
+            if (tables.length === 0) {
+              sidebar.innerHTML =
+                '<li class="text-gray-500">No tables found</li>';
+              document.getElementById("tableContainer").innerHTML =
+                "No tables in database";
+            } else {
+              tables.forEach((table) => {
+                const li = document.createElement("li");
+                li.textContent = table;
+                li.className =
+                  "cursor-pointer hover:text-blue-600 text-gray-700 px-2 py-1 rounded hover:bg-blue-100";
+                li.onclick = () => {
+                  allTablesMode = false;
+                  currentTable = table;
+                  localStorage.setItem("currentTable", table);
+                  loadTableData(table);
+                  highlightActiveTable();
+                };
+                sidebar.appendChild(li);
+              });
+            }
+          });
+      }
+    </script>
   </body>
 </html>

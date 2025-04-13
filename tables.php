@@ -1,15 +1,15 @@
 <?php
 // tables.php
-include 'db.php'; // Ensure db.php has the $pdo connection
+include 'db.php';
 
-// Perform the query using PDO
-$stmt = $pdo->query("SHOW TABLES");
-$tables = [];
+try {
+    // Perform the query using PDO
+    $stmt = $pdo->query("SHOW TABLES");
+    $tables = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
-    // Since "SHOW TABLES" returns a single column, just access the first element
-    $tables[] = $row[0];  // $row[0] contains the table name
+    header('Content-Type: application/json');
+    echo json_encode($tables);
+} catch (PDOException $e) {
+    header('Content-Type: application/json');
+    echo json_encode(['error' => $e->getMessage()]);
 }
-
-header('Content-Type: application/json');
-echo json_encode($tables);
