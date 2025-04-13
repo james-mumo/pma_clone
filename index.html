@@ -22,7 +22,16 @@
     <div class="flex min-h-[90vh]">
       <!-- Sidebar -->
       <div class="w-1/5 flex flex-col bg-gray-100 border-r p-4 h-[90vh]">
-        <h2 class="text-lg font-semibold mb-2 text-blue-600">Tables</h2>
+        <div class="flex">
+          <h2 class="text-lg font-semibold mb-2 text-blue-600">Tables</h2>
+<button 
+  id="deleteAllTablesBtn"
+  class="bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-1 rounded mb-2 ml-2"
+  title="Delete all tables (DANGEROUS!)"
+>
+  Delete All Tables
+</button>
+        </div>
         <ul id="sidebarTables" class="space-y-1 overflow-y-auto"></ul>
       </div>
 
@@ -56,7 +65,7 @@
     </div>
 
     <script>
-      let currentTable = null;
+      let currentTable = localStorage.getItem('currentTable') || null;
       let refreshInterval = null;
       const refreshRate = 500; // 0.5 seconds
 
@@ -95,15 +104,15 @@
       });
 
       // Highlight active table in sidebar
-      function highlightActiveTable(tableName) {
-        const tableItems = document.querySelectorAll('#sidebarTables li');
+      function highlightActiveTable() {
+        const tableItems = sidebar.querySelectorAll('li');
         tableItems.forEach(item => {
-          if (item.textContent === tableName) {
-            item.classList.add('bg-blue-100', 'text-blue-700');
-            item.classList.remove('text-gray-700');
+          if (item.textContent === currentTable) {
+            item.classList.add('bg-blue-200', 'text-blue-800');
+            item.classList.remove('text-gray-700', 'hover:bg-blue-100');
           } else {
-            item.classList.remove('bg-blue-100', 'text-blue-700');
-            item.classList.add('text-gray-700');
+            item.classList.remove('bg-blue-200', 'text-blue-800');
+            item.classList.add('text-gray-700', 'hover:bg-blue-100');
           }
         });
       }
@@ -112,32 +121,29 @@
       fetch("tables.php")
         .then((res) => res.json())
         .then((tables) => {
-          // Check localStorage for previously viewed table
-          const savedTable = localStorage.getItem('lastViewedTable');
-          let defaultTableIndex = 0;
-          
-          if (savedTable && tables.includes(savedTable)) {
-            defaultTableIndex = tables.indexOf(savedTable);
-          }
-
           tables.forEach((table, index) => {
             const li = document.createElement("li");
             li.textContent = table;
             li.className =
-              "cursor-pointer hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-100";
+              "cursor-pointer hover:text-blue-600 text-gray-700 px-2 py-1 rounded hover:bg-blue-100";
             li.onclick = () => {
               currentTable = table;
-              localStorage.setItem('lastViewedTable', table); // Save to localStorage
+              localStorage.setItem('currentTable', table);
               loadTableData(table);
-              highlightActiveTable(table);
+              highlightActiveTable();
             };
             sidebar.appendChild(li);
 
-            // Load either the saved table or first table by default
-            if (index === defaultTableIndex) {
-              currentTable = table;
-              loadTableData(table);
-              highlightActiveTable(table);
+            // If no table is selected or the stored table doesn't exist, select first table
+            if ((!currentTable || !tables.includes(currentTable))) {
+              currentTable = tables[0];
+              localStorage.setItem('currentTable', currentTable);
+            }
+            
+            // Load the current table (either from localStorage or first table)
+            if (table === currentTable) {
+              loadTableData(currentTable);
+              highlightActiveTable();
             }
           });
         });
@@ -296,5 +302,81 @@
       // Start auto-refresh on page load
       startAutoRefresh();
     </script>
+    
+<script>
+  // Add this event listener with your other event listeners
+  document.getElementById('deleteAllTablesBtn').addEventListener('click', function() {
+    if (confirm('⚠️ DANGER! This will delete ALL tables and their data. Are you REALLY sure?')) {
+      if (confirm('❗❗ This action cannot be undone. ALL DATA WILL BE LOST. Confirm deletion?')) {
+        deleteAllTables();
+      }
+    }
+  });
+
+  // Add this function to delete all tables
+  async function deleteAllTables() {
+    try {
+      const container = document.getElementById("tableContainer");
+      container.innerHTML = "<div class='p-4 bg-yellow-100'>Deleting all tables... Please wait.</div>";
+      
+      const response = await fetch("delete_all_tables.php", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ confirm: true })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        container.innerHTML = `
+          <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4">
+            <p class="font-bold">Success</p>
+            <p>All tables have been deleted.</p>
+            <p class="text-sm mt-2">${result.message || ''}</p>
+          </div>
+        `;
+        // Refresh the tables list
+        refreshTablesList();
+      } else {
+        showError(result.message || "Failed to delete tables", result);
+      }
+    } catch (err) {
+      showError("Error deleting tables: " + (err.message || "Unknown error"));
+    }
+  }
+
+  // Add this function to refresh the tables list
+  function refreshTablesList() {
+    const sidebar = document.getElementById("sidebarTables");
+    sidebar.innerHTML = '';
+    currentTable = null;
+    localStorage.removeItem('currentTable');
+    
+    fetch("tables.php")
+      .then((res) => res.json())
+      .then((tables) => {
+        if (tables.length === 0) {
+          sidebar.innerHTML = '<li class="text-gray-500">No tables found</li>';
+          document.getElementById("tableContainer").innerHTML = "No tables in database";
+        } else {
+          tables.forEach((table) => {
+            const li = document.createElement("li");
+            li.textContent = table;
+            li.className = "cursor-pointer hover:text-blue-600 text-gray-700 px-2 py-1 rounded hover:bg-blue-100";
+            li.onclick = () => {
+              allTablesMode = false;
+              currentTable = table;
+              localStorage.setItem('currentTable', table);
+              loadTableData(table);
+              highlightActiveTable();
+            };
+            sidebar.appendChild(li);
+          });
+        }
+      });
+  }
+</script>
   </body>
 </html>
