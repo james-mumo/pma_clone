@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Simple Admin Interface</title>
+    <title>Real-Time Admin Interface</title>
     <script>
       // Tailwind for styling
       const tw = document.createElement("script");
@@ -11,23 +11,43 @@
     </script>
   </head>
   <body class="bg-white text-gray-800 font-sans">
-    <h1 class="text-2xl font-bold p-6 text-blue-700 border-b">
-      📊 Database Admin Interface
+    <h1 class="text-2xl font-bold p-6 text-blue-700 border-b h-[10vh]">
+      📊 Real-Time Database Admin Interface
+      <span
+        id="lastUpdated"
+        class="text-sm font-normal text-gray-500 ml-2"
+      ></span>
     </h1>
 
-    <div class="flex min-h-screen">
+    <div class="flex min-h-[90vh]">
       <!-- Sidebar -->
-      <div class="w-1/5 bg-gray-100 border-r p-4 h-screen overflow-y-auto">
+      <div class="w-1/5 flex flex-col bg-gray-100 border-r p-4 h-[90vh]">
         <h2 class="text-lg font-semibold mb-2 text-blue-600">Tables</h2>
-        <ul id="sidebarTables" class="space-y-2"></ul>
+        <ul id="sidebarTables" class="space-y-1 overflow-y-auto"></ul>
       </div>
 
       <!-- Table Data -->
       <div class="w-4/5 p-6">
-        <div
-          id="tableTitle"
-          class="text-lg font-semibold mb-4 text-gray-700"
-        ></div>
+        <div class="flex justify-between items-center mb-4">
+          <div
+            id="tableTitle"
+            class="text-lg font-semibold text-gray-700"
+          ></div>
+          <div class="flex items-center">
+            <span class="text-sm text-gray-500 mr-2">Auto-refresh:</span>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                id="autoRefreshToggle"
+                class="sr-only peer"
+                checked
+              />
+              <div
+                class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"
+              ></div>
+            </label>
+          </div>
+        </div>
         <div
           id="tableContainer"
           class="overflow-auto border border-gray-300 rounded p-4 bg-gray-50"
@@ -36,22 +56,89 @@
     </div>
 
     <script>
+      let currentTable = null;
+      let refreshInterval = null;
+      const refreshRate = 500; // 0.5 seconds
+
       const sidebar = document.getElementById("sidebarTables");
       const tableTitle = document.getElementById("tableTitle");
+      const lastUpdated = document.getElementById("lastUpdated");
+      const autoRefreshToggle = document.getElementById("autoRefreshToggle");
+
+      // Update timestamp display
+      function updateTimestamp() {
+        const now = new Date();
+        lastUpdated.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+      }
+
+      // Start auto-refresh
+      function startAutoRefresh() {
+        if (refreshInterval) clearInterval(refreshInterval);
+        refreshInterval = setInterval(() => {
+          if (currentTable) loadTableData(currentTable);
+        }, refreshRate);
+      }
+
+      // Stop auto-refresh
+      function stopAutoRefresh() {
+        if (refreshInterval) clearInterval(refreshInterval);
+        refreshInterval = null;
+      }
+
+      // Toggle auto-refresh
+      autoRefreshToggle.addEventListener("change", function () {
+        if (this.checked) {
+          startAutoRefresh();
+        } else {
+          stopAutoRefresh();
+        }
+      });
+
+      // Highlight active table in sidebar
+      function highlightActiveTable(tableName) {
+        const tableItems = document.querySelectorAll('#sidebarTables li');
+        tableItems.forEach(item => {
+          if (item.textContent === tableName) {
+            item.classList.add('bg-blue-100', 'text-blue-700');
+            item.classList.remove('text-gray-700');
+          } else {
+            item.classList.remove('bg-blue-100', 'text-blue-700');
+            item.classList.add('text-gray-700');
+          }
+        });
+      }
 
       // Load tables list
       fetch("tables.php")
         .then((res) => res.json())
         .then((tables) => {
+          // Check localStorage for previously viewed table
+          const savedTable = localStorage.getItem('lastViewedTable');
+          let defaultTableIndex = 0;
+          
+          if (savedTable && tables.includes(savedTable)) {
+            defaultTableIndex = tables.indexOf(savedTable);
+          }
+
           tables.forEach((table, index) => {
             const li = document.createElement("li");
             li.textContent = table;
             li.className =
-              "cursor-pointer hover:text-blue-600 text-gray-700 px-2 py-1 rounded hover:bg-blue-100";
-            li.onclick = () => loadTableData(table);
+              "cursor-pointer hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-100";
+            li.onclick = () => {
+              currentTable = table;
+              localStorage.setItem('lastViewedTable', table); // Save to localStorage
+              loadTableData(table);
+              highlightActiveTable(table);
+            };
             sidebar.appendChild(li);
 
-            if (index === 0) loadTableData(table); // Load first table by default
+            // Load either the saved table or first table by default
+            if (index === defaultTableIndex) {
+              currentTable = table;
+              loadTableData(table);
+              highlightActiveTable(table);
+            }
           });
         });
 
@@ -59,6 +146,8 @@
         fetch(`data.php?table=${encodeURIComponent(table)}`)
           .then((res) => res.json())
           .then((rows) => {
+            updateTimestamp();
+            tableTitle.textContent = `Showing Data for: ${table}`;
             const container = document.getElementById("tableContainer");
             container.innerHTML = "";
 
@@ -119,20 +208,24 @@
                         .then((result) => {
                           if (result.success) {
                             td.textContent = newValue;
+                            updateTimestamp();
+                            // If auto-refresh is on, reload the table to show changes
+                            if (autoRefreshToggle.checked) {
+                              loadTableData(table);
+                            }
                           } else {
                             td.textContent = val;
-                            alert(result.message || "Update failed.");
+                            showError(
+                              result.message || "Update failed.",
+                              result
+                            );
                           }
                         })
-                        .catch(async (err) => {
-                          const res = await err.response?.json?.();
-                          alert(
+                        .catch((err) => {
+                          td.textContent = val;
+                          showError(
                             "Error updating data: " +
-                              (res?.message || err.message || "Unknown error")
-                          );
-                          console.log(
-                            "Error updating data: " +
-                              (res?.message || err.message || "Unknown error")
+                              (err.message || "Unknown error")
                           );
                         });
                     } else {
@@ -161,15 +254,47 @@
 
             tableEl.appendChild(tbody);
             container.appendChild(tableEl);
+          })
+          .catch((err) => {
+            showError(
+              "Error loading table data: " + (err.message || "Unknown error")
+            );
           });
       }
 
-      // Optional: Auto-refresh current table
-      setInterval(() => {
-        const currentTitle = tableTitle.textContent;
-        const match = currentTitle.match(/Showing Data for: (.+)/);
-        if (match) loadTableData(match[1]);
-      }, 5000);
+      // Show error message
+      function showError(message, errorDetails = null) {
+        console.error(message, errorDetails);
+        const errorDiv = document.createElement("div");
+        errorDiv.className =
+          "bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4";
+        errorDiv.innerHTML = `
+          <p class="font-bold">Error</p>
+          <p>${message}</p>
+          ${
+            errorDetails?.sqlstate
+              ? `<p class="text-xs mt-2">SQLSTATE: ${errorDetails.sqlstate}</p>`
+              : ""
+          }
+          ${
+            errorDetails?.driver_message
+              ? `<p class="text-xs">Details: ${errorDetails.driver_message}</p>`
+              : ""
+          }
+        `;
+
+        // Insert at the top of the container
+        const container = document.getElementById("tableContainer");
+        container.insertBefore(errorDiv, container.firstChild);
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+          errorDiv.remove();
+        }, 5000);
+      }
+
+      // Start auto-refresh on page load
+      startAutoRefresh();
     </script>
   </body>
 </html>
