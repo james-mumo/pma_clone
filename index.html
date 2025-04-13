@@ -20,21 +20,27 @@
     </style>
   </head>
   <body class="bg-white text-gray-800 font-sans">
-    <div class="flex">
+    <div class="flex items-center">
       <h1 class="text-2xl font-bold p-6 text-blue-700 border-b h-[10vh]">
         📊 Real-Time Database Admin Interface
       </h1>
-      <span
-        id="lastUpdated"
-        class="text-sm font-normal text-gray-500 ml-2"
-      ></span>
-
-      <div class="flex-1"></div>
-      <div class="flex items-center">
-        <label class="mr-2 text-sm text-gray-600">Database:</label>
-        <select id="databaseSelector" class="border rounded px-3 py-1 text-sm">
-          <option value="">Loading databases...</option>
-        </select>
+      <div class="flex flex-col items-center align-left">
+        <div class="flex items-center">
+          <span
+            id="lastUpdated"
+            class="text-sm font-normal text-gray-500 ml-2"
+          ></span>
+          <div class="flex-1"></div>
+        </div>
+        <div class="flex items-center">
+          <label class="mr-2 text-sm text-gray-600">Database:</label>
+          <select
+            id="databaseSelector"
+            class="border rounded px-3 py-1 text-sm"
+          >
+            <option value="">Loading databases...</option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -280,19 +286,19 @@
             }
             return res.json();
           })
-          .then((data) => {
+          .then((rows) => {
             updateTimestamp();
-            tableTitle.textContent = `Showing Data for: ${table}`;
+            tableTitle.textContent = `Showing rows for: ${table}`;
             const container = document.getElementById("tableContainer");
             container.innerHTML = "";
 
-            if (data.error) {
-              container.textContent = data.error;
+            if (rows.error) {
+              container.textContent = rows.error;
               return;
             }
 
-            if (!data.length) {
-              container.textContent = "No data in this table.";
+            if (!rows.length) {
+              container.textContent = "No Data in this table.";
               return;
             }
 

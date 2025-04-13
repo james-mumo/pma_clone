@@ -1,6 +1,6 @@
 <?php
 $host = 'localhost';
-$dbname = 'medlutek_portal';
+$dbname = 'cohort_sync';
 $username = 'root';
 $password = '';
 
