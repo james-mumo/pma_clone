@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Simple Admin Interface</title>
+    <script>
+      // Tailwind for styling
+      const tw = document.createElement("script");
+      tw.src = "https://cdn.tailwindcss.com";
+      document.head.appendChild(tw);
+    </script>
+  </head>
+  <body class="bg-white text-gray-800 font-sans">
+    <h1 class="text-2xl font-bold p-6 text-blue-700 border-b">
+      📊 Database Admin Interface
+    </h1>
+
+    <div class="flex min-h-screen">
+      <!-- Sidebar -->
+      <div class="w-1/5 bg-gray-100 border-r p-4 h-screen overflow-y-auto">
+        <h2 class="text-lg font-semibold mb-2 text-blue-600">Tables</h2>
+        <ul id="sidebarTables" class="space-y-2"></ul>
+      </div>
+
+      <!-- Table Data -->
+      <div class="w-4/5 p-6">
+        <div
+          id="tableTitle"
+          class="text-lg font-semibold mb-4 text-gray-700"
+        ></div>
+        <div
+          id="tableContainer"
+          class="overflow-auto border border-gray-300 rounded p-4 bg-gray-50"
+        ></div>
+      </div>
+    </div>
+
+    <script>
+      const sidebar = document.getElementById("sidebarTables");
+      const tableTitle = document.getElementById("tableTitle");
+
+      // Load tables list
+      fetch("tables.php")
+        .then((res) => res.json())
+        .then((tables) => {
+          tables.forEach((table, index) => {
+            const li = document.createElement("li");
+            li.textContent = table;
+            li.className =
+              "cursor-pointer hover:text-blue-600 text-gray-700 px-2 py-1 rounded hover:bg-blue-100";
+            li.onclick = () => loadTableData(table);
+            sidebar.appendChild(li);
+
+            if (index === 0) loadTableData(table); // Load first table by default
+          });
+        });
+
+      function loadTableData(table) {
+        fetch(`data.php?table=${encodeURIComponent(table)}`)
+          .then((res) => res.json())
+          .then((rows) => {
+            const container = document.getElementById("tableContainer");
+            container.innerHTML = "";
+
+            if (!rows.length) {
+              container.textContent = "No data in this table.";
+              return;
+            }
+
+            const tableEl = document.createElement("table");
+            tableEl.className =
+              "min-w-full border-collapse border border-gray-300";
+
+            // Create header
+            const thead = document.createElement("thead");
+            const headRow = document.createElement("tr");
+            Object.keys(rows[0]).forEach((key) => {
+              const th = document.createElement("th");
+              th.textContent = key;
+              th.className = "border p-2 bg-blue-100 text-left text-sm";
+              headRow.appendChild(th);
+            });
+            thead.appendChild(headRow);
+            tableEl.appendChild(thead);
+
+            // Create body
+            const tbody = document.createElement("tbody");
+            rows.forEach((row) => {
+              const tr = document.createElement("tr");
+
+              Object.entries(row).forEach(([key, val]) => {
+                const td = document.createElement("td");
+                td.textContent = val;
+                td.className = "border p-2 text-sm cursor-pointer";
+
+                // Make cell editable on double-click
+                td.ondblclick = function () {
+                  const input = document.createElement("input");
+                  input.type = "text";
+                  input.value = val;
+                  input.className = "w-full p-1 border";
+
+                  input.onblur = () => {
+                    const newValue = input.value;
+                    if (newValue !== val) {
+                      fetch("update.php", {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                          table: table,
+                          key: key,
+                          value: newValue,
+                          row_id: row.id, // assumes each row has an `id` field
+                        }),
+                      })
+                        .then((res) => res.json())
+                        .then((result) => {
+                          if (result.success) {
+                            td.textContent = newValue;
+                          } else {
+                            td.textContent = val;
+                            alert(result.message || "Update failed.");
+                          }
+                        })
+                        .catch(async (err) => {
+                          const res = await err.response?.json?.();
+                          alert(
+                            "Error updating data: " +
+                              (res?.message || err.message || "Unknown error")
+                          );
+                          console.log(
+                            "Error updating data: " +
+                              (res?.message || err.message || "Unknown error")
+                          );
+                        });
+                    } else {
+                      td.textContent = val;
+                    }
+                  };
+
+                  input.onkeydown = (e) => {
+                    if (e.key === "Enter") {
+                      input.blur();
+                    } else if (e.key === "Escape") {
+                      td.textContent = val;
+                    }
+                  };
+
+                  td.textContent = "";
+                  td.appendChild(input);
+                  input.focus();
+                };
+
+                tr.appendChild(td);
+              });
+
+              tbody.appendChild(tr);
+            });
+
+            tableEl.appendChild(tbody);
+            container.appendChild(tableEl);
+          });
+      }
+
+      // Optional: Auto-refresh current table
+      setInterval(() => {
+        const currentTitle = tableTitle.textContent;
+        const match = currentTitle.match(/Showing Data for: (.+)/);
+        if (match) loadTableData(match[1]);
+      }, 5000);
+    </script>
+  </body>
+</html>
