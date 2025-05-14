@@ -1,6 +1,6 @@
 <?php
 $host = 'localhost';
-$dbname = 'cohort_sync';
+$dbname = 'cohort_sync_7';
 $username = 'root';
 $password = '';
 
